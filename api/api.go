@@ -3,6 +3,9 @@ package api
 import (
 	"bytes"
 	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/ethereum/Hui-TxState/config"
 	"github.com/ethereum/Hui-TxState/types"
 	"github.com/ethereum/Hui-TxState/utils"
@@ -12,8 +15,6 @@ import (
 	"github.com/sirupsen/logrus"
 	tgbot "github.com/suiguo/hwlib/telegram_bot"
 	"github.com/tidwall/gjson"
-	"net/http"
-	"time"
 )
 
 const ADDRLEN = 42
@@ -60,13 +61,22 @@ func checkInput(addr string) error {
 
 // 接收注册过来的消息，存入db作为tx初始状态
 func (s *ApiService) AddTask(c *gin.Context) {
+	res := types.HttpRes{}
+	res.Code = -99 //默认错误
+	res.Message = "未知错误"
+	defer func() {
+		c.SecureJSON(200, res)
+	}()
 	buf := make([]byte, 1024)
 	n, _ := c.Request.Body.Read(buf)
 	data := string(buf[0:n])
 
 	isValid := gjson.Valid(data)
-	if isValid == false {
+	if !isValid {
+		res.Code = -1
+		res.Message = "Not valid json"
 		fmt.Println("Not valid json")
+		return
 	}
 
 	from := gjson.Get(data, "from")
@@ -78,26 +88,28 @@ func (s *ApiService) AddTask(c *gin.Context) {
 	value := gjson.Get(data, "value")
 
 	fmt.Println(chainId)
-	res := types.HttpRes{}
 
 	//check params
 	err := checkAddr(from.String())
 	if err != nil {
 		res.Code = http.StatusBadRequest
 		res.Message = err.Error()
-		c.SecureJSON(http.StatusBadRequest, res)
+		return
+		// c.SecureJSON(http.StatusBadRequest, res)
 	}
 	err = checkAddr(to.String())
 	if err != nil {
 		res.Code = http.StatusBadRequest
 		res.Message = err.Error()
-		c.SecureJSON(http.StatusBadRequest, res)
+		return
+		// c.SecureJSON(http.StatusBadRequest, res)
 	}
 	err = checkInput(inputData.String())
 	if err != nil {
 		res.Code = http.StatusBadRequest
 		res.Message = err.Error()
-		c.SecureJSON(http.StatusBadRequest, res)
+		return
+		// c.SecureJSON(http.StatusBadRequest, res)
 	}
 
 	//插入task
@@ -116,20 +128,21 @@ func (s *ApiService) AddTask(c *gin.Context) {
 	err = utils.CommitWithSession(s.db, func(session *xorm.Session) (execErr error) {
 		if err := s.db.SaveTxTask(session, &task); err != nil {
 			logrus.Errorf("save transaction task error:%v tasks:[%v]", err, task)
-			return
+			return err
 		}
 		s.tgAlert(&task)
-		return
+		return nil
 	})
 	if err != nil {
 		res.Code = http.StatusInternalServerError
 		res.Message = err.Error()
-		c.SecureJSON(http.StatusInternalServerError, res)
+		return
+		// c.SecureJSON(http.StatusInternalServerError, res)
 	}
 
 	res.Code = 0
 	res.Message = "success"
-	c.SecureJSON(http.StatusOK, res)
+	// c.SecureJSON(http.StatusOK, res)
 }
 
 func (c *ApiService) tgAlert(task *types.TransactionTask) {
