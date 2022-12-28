@@ -1,7 +1,8 @@
 all: build
 
 CURRENT_DIR=$(pwd)
-
+version := "1.0.1"
+dockerName := "reg.huiwang.io/fat/hui-txstate"
 PROJ = Hui-TxState
 MODULE = "Hui-TxState"
 
@@ -31,7 +32,11 @@ clean:
 	rm -rf bin
 
 build:
-	go build ${PKG_TAG} -o bin/Hui-TxState main.go
+	rm -rf bin/Hui-TxState
+	mkdir -p bin/Hui-TxState
+	${CROSS_COMPILE} go build -o bin/Hui-TxState main.go
+	sudo docker build -t $(dockerName):$(version) .
+	sudo docker push $(dockerName):$(version)
 
 test: style cilint
 	go test -cover ./...
