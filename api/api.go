@@ -2,7 +2,9 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -11,14 +13,33 @@ import (
 	"github.com/ethereum/Hui-TxState/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/go-xorm/xorm"
+	"github.com/goccy/go-json"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	tgbot "github.com/suiguo/hwlib/telegram_bot"
-	"github.com/tidwall/gjson"
 )
 
 const ADDRLEN = 42
 
+type apiData struct {
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Data      string `json:"data"`
+	Uid       string `json:"uid"`
+	RequestId string `json:"requestId"`
+	ChainId   string `json:"chainId"`
+	Value     string `json:"value"`
+	// From string `json:"from"`
+
+}
+
+// from := gjson.Get(data, "from")
+// to := gjson.Get(data, "to")
+// inputData := gjson.Get(data, "data")
+// userID := gjson.Get(data, "uid")
+// requestID := gjson.Get(data, "requestId")
+// chainId := gjson.Get(data, "chainId")
+// value := gjson.Get(data, "value")
 type ApiService struct {
 	db     types.IDB
 	config *config.Config
@@ -67,61 +88,60 @@ func (s *ApiService) AddTask(c *gin.Context) {
 	defer func() {
 		c.SecureJSON(200, res)
 	}()
-	buf := make([]byte, 1024)
-	n, _ := c.Request.Body.Read(buf)
-	data := string(buf[0:n])
-
-	isValid := gjson.Valid(data)
-	if !isValid {
+	out, err := ioutil.ReadAll(c.Request.Body)
+	if err != nil {
 		res.Code = -1
-		res.Message = "Not valid json"
-		fmt.Println("Not valid json")
+		res.Message = err.Error()
 		return
 	}
-
-	from := gjson.Get(data, "from")
-	to := gjson.Get(data, "to")
-	inputData := gjson.Get(data, "data")
-	userID := gjson.Get(data, "uid")
-	requestID := gjson.Get(data, "requestId")
-	chainId := gjson.Get(data, "chainId")
-	value := gjson.Get(data, "value")
+	data := &apiData{}
+	err = json.Unmarshal(out, data)
+	if err != nil {
+		res.Code = -2
+		res.Message = err.Error()
+		return
+	}
+	from := data.From
+	to := data.To
+	inputData := data.Data
+	userID := data.Uid
+	requestID := data.RequestId
+	chainId := data.ChainId
+	value := data.Value
 
 	fmt.Println(chainId)
-
 	//check params
-	err := checkAddr(from.String())
+	err = checkAddr(from)
 	if err != nil {
 		res.Code = http.StatusBadRequest
 		res.Message = err.Error()
 		return
 		// c.SecureJSON(http.StatusBadRequest, res)
 	}
-	err = checkAddr(to.String())
+	err = checkAddr(to)
 	if err != nil {
 		res.Code = http.StatusBadRequest
 		res.Message = err.Error()
 		return
 		// c.SecureJSON(http.StatusBadRequest, res)
 	}
-	err = checkInput(inputData.String())
+	err = checkInput(inputData)
 	if err != nil {
 		res.Code = http.StatusBadRequest
 		res.Message = err.Error()
 		return
 		// c.SecureJSON(http.StatusBadRequest, res)
 	}
-
 	//插入task
 	task := types.TransactionTask{
 		UUID:      time.Now().Unix(),
-		UserID:    userID.String(),
-		From:      from.String(),
-		To:        to.String(),
-		Value:     value.String(),
-		InputData: inputData.String(),
+		UserID:    userID,
+		From:      from,
+		To:        to,
+		Value:     value,
+		InputData: inputData,
 		ChainId:   8888,
-		RequestId: requestID.String(),
+		RequestId: requestID,
 	}
 	task.State = int(types.TxInitState)
 
