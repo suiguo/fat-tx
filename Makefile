@@ -1,7 +1,7 @@
 all: build
 
 CURRENT_DIR=$(pwd)
-version := "1.0.3"
+version := "1.0.4"
 dockerName := "reg.huiwang.io/fat/hui-txstate"
 PROJ = Hui-TxState
 MODULE = "Hui-TxState"
